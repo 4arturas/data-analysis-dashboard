@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dynamic Grafana Requests Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/utc.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/timezone.js"></script>
+
+    <script>
+        if (typeof dayjs !== 'undefined' && typeof dayjs.extend === 'function') {
+            if (typeof dayjs_plugin_utc === 'function') {
+                dayjs.extend(dayjs_plugin_utc);
+            }
+            if (typeof dayjs_plugin_timezone === 'function') {
+                dayjs.extend(dayjs_plugin_timezone);
+            }
+        }
+    </script>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/antd/5.27.5/reset.css" rel="stylesheet">
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/antd/5.27.4/antd.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js"></script>
+
+    <script type="text/babel" src="components/Context.js"></script>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo } = React;
+        const {
+            Button,
+            Space,
+            Typography,
+            DatePicker,
+            Tabs,
+            Spin,
+            Table,
+            Slider
+        } = antd;
+        const { Text } = Typography;
+        const { RangePicker } = DatePicker;
+    </script>
+    <script type="text/babel">
+        // --- UTILITY FUNCTIONS FOR CORRELATION ANALYSIS ---
+
+        function normalizeData(rawChartsData) {
+            if (!rawChartsData || rawChartsData.length === 0) {
+                return [];
+            }
+
+            const normalizedData = [];
+
+            rawChartsData.forEach(series => {
+                let min = Infinity;
+                let max = -Infinity;
+
+                series.data.forEach(point => {
+                    const value = point[1];
+                    if (typeof value === 'number' && !isNaN(value)) {
+                        if (value < min) min = value;
+                        if (value > max) max = value;
+                    }
+                });
+
+                const range = max - min;
+                const normalizedSeriesData = series.data.map(point => {
+                    const timestamp = point[0];
+                    const value = point[1];
+                    let normalizedValue = value;
+
+                    if (typeof value === 'number' && !isNaN(value)) {
+                        if (range === 0) {
+                            normalizedValue = 0;
+                        } else {
+                            normalizedValue = (value - min) / range;
+                        }
+                    }
+                    return [timestamp, normalizedValue];
+                });
+
+                normalizedData.push({
+                    name: series.name,
+                    payloadKey: series.payloadKey,
+                    data: normalizedSeriesData
+                });
+            });
+
+            return normalizedData;
+        }
+
+        function calculateRValue(seriesA, seriesB) {
+            if (seriesA.data.length !== seriesB.data.length || seriesA.data.length === 0) {
+                return 0;
+            }
+
+            const n = seriesA.data.length;
+            let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+
+            for (let i = 0; i < n; i++) {
+                const x = seriesA.data[i][1];
+                const y = seriesB.data[i][1];
+
+                if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
+                    return 0;
+                }
+
+                sumX += x;
+                sumY += y;
+                sumXY += x * y;
+                sumX2 += x * x;
+                sumY2 += y * y;
+            }
+
+            const numerator = (n * sumXY) - (sumX * sumY);
+            const denominator = Math.sqrt(((n * sumX2) - (sumX * sumX)) * ((n * sumY2) - (sumY * sumY)));
+
+            if (denominator === 0) {
+                return 0;
+            }
+
+            return numerator / denominator;
+        }
+
+        function calculateAllCorrelations(chartsData) {
+            const correlations = [];
+            const n = chartsData.length;
+
+            for (let i = 0; i < n; i++) {
+                for (let j = i + 1; j < n; j++) {
+                    const rValue = calculateRValue(chartsData[i], chartsData[j]);
+                    correlations.push({
+                        key: `${chartsData[i].name}-${chartsData[j].name}`,
+                        seriesA: chartsData[i].name,
+                        seriesB: chartsData[j].name,
+                        payloadKeyA: chartsData[i].payloadKey,
+                        payloadKeyB: chartsData[j].payloadKey,
+                        rValue: rValue
+                    });
+                }
+            }
+            return correlations;
+        }
+    </script>
+    <script type="text/babel">
+        // --- CORRELATION TABLE COMPONENT ---
+
+        function CorrelationTable({ data, loading, correlationThreshold, onThresholdChange, allCorrelations }) {
+            if (loading) {
+                return (
+                    <div style={{ padding: '20px', textAlign: 'center', marginTop: '20px', border: '1px solid #eee', height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <antd.Spin size="large" tip="Calculating Correlations..." />
+                    </div>
+                );
+            }
+
+            const columns = [
+                {
+                    title: 'Series A',
+                    dataIndex: 'seriesA',
+                    key: 'seriesA',
+                    render: (text, record) => (
+                        <>
+                            <Text strong>{record.payloadKeyA}</Text>
+                            <br />
+                            <Text type="secondary" style={{ fontSize: '0.85em' }}>{text}</Text>
+                        </>
+                    )
+                },
+                {
+                    title: 'Series B',
+                    dataIndex: 'seriesB',
+                    key: 'seriesB',
+                    render: (text, record) => (
+                        <>
+                            <Text strong>{record.payloadKeyB}</Text>
+                            <br />
+                            <Text type="secondary" style={{ fontSize: '0.85em' }}>{text}</Text>
+                        </>
+                    )
+                },
+                {
+                    title: 'R-Value',
+                    dataIndex: 'rValue',
+                    key: 'rValue',
+                    render: (text) => {
+                        const value = text;
+                        const formattedText = value.toFixed(4);
+                        let color = 'black';
+                        if (value > 0) {
+                            color = 'green';
+                        } else if (value < 0) {
+                            color = 'red';
+                        }
+                        return <Text strong style={{ color: color }}>{formattedText}</Text>;
+                    },
+                    sorter: (a, b) => a.rValue - b.rValue,
+                },
+            ];
+
+            const hasCorrelations = allCorrelations.length > 0;
+
+            return (
+                <div style={{ marginTop: '20px' }}>
+                    <div style={{ minWidth: 250, marginBottom: '10px' }}>
+                        <Text strong>Correlation Threshold (|R| &ge; {correlationThreshold.toFixed(2)}):</Text>
+                        <antd.Slider
+                            min={0.05}
+                            max={1.0}
+                            step={0.01}
+                            value={correlationThreshold}
+                            onChange={onThresholdChange}
+                            tooltip={{ formatter: (value) => `|R| \u2265 ${value.toFixed(2)}` }}
+                            disabled={!hasCorrelations}
+                        />
+                    </div>
+                    <Text type="secondary">Filtered (|R| &ge; {correlationThreshold.toFixed(2)}): Pearson correlation coefficients (R) between pairs of raw time series data.</Text>
+                    <antd.Table
+                        dataSource={data}
+                        columns={columns}
+                        pagination={false}
+                        size="small"
+                        style={{ marginTop: '10px' }}
+                        locale={{
+                            emptyText: hasCorrelations
+                                ? `No correlations found with |R| >= ${correlationThreshold.toFixed(2)}`
+                                : 'Not enough data to calculate correlations (need at least two series).'
+                        }}
+                    />
+                </div>
+            );
+        }
+    </script>
+    <script type="text/babel">
+        // --- ECHARTS VISUALIZATION COMPONENT ---
+
+        function EChartsVisualization({ data, yAxisName = 'Value', loading = false }) {
+            const chartRef = React.useRef(null);
+            const chartInstance = React.useRef(null);
+
+            useEffect(() => {
+                if (!chartRef.current || loading || data.length === 0) return;
+
+                if (chartInstance.current) {
+                    chartInstance.current.dispose();
+                }
+
+                const chart = echarts.init(chartRef.current);
+                chartInstance.current = chart;
+
+                const seriesData = data.map(series => ({
+                    name: series.name,
+                    type: 'line',
+                    data: series.data,
+                    showSymbol: false,
+                }));
+
+                const option = {
+                    tooltip: {
+                        trigger: 'axis',
+                        formatter: function (params) {
+                            let result = dayjs(params[0].value[0]).format('YYYY-MM-DD HH:mm:ss');
+                            params.forEach(function (item) {
+                                const value = item.value[1];
+                                const formattedValue = typeof value === 'number' ? value.toFixed(4) : value;
+                                result += '<br/>' + item.marker + item.seriesName + ': ' + formattedValue;
+                            });
+                            return result;
+                        }
+                    },
+                    legend: {
+                        data: data.map(d => d.name),
+                        type: 'scroll',
+                        bottom: 30,
+                    },
+                    grid: {
+                        left: '3%',
+                        right: '4%',
+                        bottom: '15%',
+                        containLabel: true
+                    },
+                    xAxis: {
+                        type: 'time',
+                        name: 'Time',
+                    },
+                    yAxis: {
+                        type: 'value',
+                        name: yAxisName,
+                    },
+                    series: seriesData,
+                    dataZoom: [
+                        {
+                            type: 'inside',
+                            xAxisIndex: 0,
+                            start: 0,
+                            end: 100,
+                        },
+                        {
+                            type: 'slider',
+                            xAxisIndex: 0,
+                            start: 0,
+                            end: 100,
+                            height: 20,
+                            bottom: 5,
+                        }
+                    ]
+                };
+
+                chart.setOption(option);
+
+                const resizeObserver = new ResizeObserver(() => chart.resize());
+                resizeObserver.observe(chartRef.current);
+
+                return () => {
+                    resizeObserver.disconnect();
+
+                    if (chartInstance.current) {
+                        chartInstance.current.dispose();
+                        chartInstance.current = null;
+                    }
+                };
+            }, [data, yAxisName, loading]);
+
+            if (loading) {
+                return (
+                    <div style={{ padding: '20px', textAlign: 'center', marginTop: '20px', border: '1px solid #eee', height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <antd.Spin size="large" tip="Fetching Data..." />
+                    </div>
+                );
+            }
+
+            if (data.length === 0) {
+                return (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#888', marginTop: '20px' }}>
+                        No series data available to display.
+                    </div>
+                );
+            }
+
+            return (
+                <div
+                    ref={chartRef}
+                    style={{ width: '100%', height: '500px', border: '1px solid #eee', marginTop: '20px' }}
+                />
+            );
+        }
+    </script>
+    <script type="text/babel">
+        // --- MAIN APP COMPONENT ---
+
+        function MainApp() {
+            const API_URL = '/run-request';
+
+            const { appContext, setAppContext } = React.useContext(AppContext);
+
+            const initialFrom = appContext.initialFrom;
+            const initialTo = appContext.initialTo;
+            const loading = appContext.loading;
+            const correlationThreshold = appContext.correlationThreshold;
+            const allCorrelations = appContext.allCorrelations;
+
+
+            // Use useMemo for instant, correct filtering of the correlation data
+            const correlationData = useMemo(() => {
+                if (!allCorrelations || allCorrelations.length === 0) {
+                    return [];
+                }
+                // THIS IS THE CORRECT FILTERING LOGIC: |R| >= Threshold
+                return allCorrelations.filter(item =>
+                    Math.abs(item.rValue) >= correlationThreshold
+                );
+            }, [allCorrelations, correlationThreshold]);
+
+
+            const [dateRange, setDateRange] = useState([
+                dayjs.tz(initialFrom.replace('Z', ''), 'Europe/Vilnius'),
+                dayjs.tz(initialTo.replace('Z', ''), 'Europe/Vilnius')
+            ]);
+
+            const handleDateChange = (dates) => {
+                if (dates && dates.length === 2 && dates[0] && dates[1]) {
+                    setDateRange(dates);
+                } else {
+                    setDateRange([null, null]);
+                }
+            };
+
+            const handleThresholdChange = (value) => {
+                setAppContext(prevContext => ({
+                    ...prevContext,
+                    correlationThreshold: value
+                }));
+            };
+
+            const runRequests = useCallback(async (startDayjs, endDayjs) => {
+                if (!startDayjs || !endDayjs) return;
+
+                setAppContext(prevContext => ({
+                    ...prevContext,
+                    loading: true,
+                    rawChartsData: [],
+                    normalizedChartsData: [],
+                    allCorrelations: [],
+                }));
+
+                const fromISO = startDayjs.toISOString();
+                const toISO = endDayjs.toISOString();
+
+                try {
+                    const newRawChartsData = [];
+
+                    const response = await fetch('./payload.json');
+                    // Assume payloads.json is now an object map to support payload keys
+                    const basePayloads = await response.json();
+
+                    setAppContext(prevContext => ({ ...prevContext, payloads: basePayloads }));
+
+                    const payloadEntries = Object.entries(basePayloads);
+
+                    for (let i = 0; i < payloadEntries.length; i++) {
+                        const [payloadKey, payload] = payloadEntries[i]; // Get key and payload
+
+                        const response = await fetch(API_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ from: fromISO, to: toISO, payload })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+
+                        const data = await response.json();
+                        const frames = data.data.results.A.frames;
+
+                        for (const frame of frames) {
+                            const x = frame.data.values[0];
+                            const y = frame.data.values[1];
+                            const name = frame.schema.name;
+
+                            const seriesData = x.map((ts, index) => {
+                                const timestamp = !isNaN(ts) ? Number(ts) : dayjs(ts).valueOf();
+                                return [timestamp, y[index]];
+                            });
+
+                            newRawChartsData.push({
+                                name: name,
+                                payloadKey: payloadKey, // Store the payload key
+                                data: seriesData
+                            });
+                        }
+                    }
+
+                    const newNormalizedChartsData = normalizeData(newRawChartsData);
+                    const allCorrelationData = calculateAllCorrelations(newRawChartsData);
+
+                    // Set all results to context. Filtered results are calculated by useMemo immediately after.
+                    setAppContext(prevContext => ({
+                        ...prevContext,
+                        rawChartsData: newRawChartsData,
+                        normalizedChartsData: newNormalizedChartsData,
+                        allCorrelations: allCorrelationData,
+                    }));
+
+                } catch (err) {
+                    console.error("Data Fetch Error:", err.message);
+                } finally {
+                    setAppContext(prevContext => ({ ...prevContext, loading: false }));
+                }
+            }, [setAppContext]);
+
+            useEffect(() => {
+                const [start, end] = dateRange;
+                if (start && end) {
+                    runRequests(start, end);
+                }
+            }, []);
+
+            const handleRunClick = () => {
+                const [start, end] = dateRange;
+                runRequests(start, end);
+            }
+
+            const rawChartsData = appContext.rawChartsData;
+            const normalizedChartsData = appContext.normalizedChartsData;
+
+            const tabsItems = [
+                {
+                    key: '1',
+                    label: 'Raw Data',
+                    children: (
+                        <EChartsVisualization
+                            data={rawChartsData}
+                            yAxisName="Value"
+                            loading={loading}
+                        />
+                    ),
+                },
+                {
+                    key: '2',
+                    label: 'Normalized Data',
+                    children: (
+                        <EChartsVisualization
+                            data={normalizedChartsData}
+                            yAxisName="Normalized Value (0 to 1)"
+                            loading={loading}
+                        />
+                    ),
+                },
+                {
+                    key: '3',
+                    label: 'R-Values (Correlation)',
+                    children: (
+                        <CorrelationTable
+                            data={correlationData} // Pass the instantly filtered data
+                            loading={loading}
+                            correlationThreshold={correlationThreshold}
+                            onThresholdChange={handleThresholdChange}
+                            allCorrelations={allCorrelations}
+                        />
+                    ),
+                }
+            ];
+
+            return (
+                <div style={{ padding: '20px' }}>
+                    <Space direction="horizontal" style={{ marginBottom: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <div style={{ minWidth: 400 }}>
+                            <Text strong>Select Period (Vilnius Time):</Text><br />
+                            <RangePicker
+                                value={dateRange}
+                                showTime={{ format: 'HH:mm:ss' }}
+                                format="YYYY-MM-DD HH:mm:ss"
+                                onChange={handleDateChange}
+                                style={{ width: '100%' }}
+                            />
+                        </div>
+                        <div>
+                            <Button
+                                type="primary"
+                                onClick={handleRunClick}
+                                disabled={loading || !dateRange[0] || !dateRange[1]}
+                                style={{ marginTop: 27 }}
+                            >
+                                {loading ? 'Fetching Data...' : 'Refresh Data'}
+                            </Button>
+                        </div>
+                    </Space>
+
+                    <Tabs
+                        defaultActiveKey="1"
+                        items={tabsItems}
+                    />
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            React.createElement(AppProvider, null, React.createElement(MainApp))
+        );
+    </script>
+</body>
+
+</html>

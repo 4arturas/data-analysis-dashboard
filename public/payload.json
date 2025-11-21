@@ -1,0 +1,65 @@
+{
+    "http_requests": {
+        "targets": [
+            {
+                "expr": "HTTP Requests"
+            }
+        ]
+    },
+    "request_latency": {
+        "targets": [
+            {
+                "expr": "Request Latency"
+            }
+        ]
+    },
+    "correlated_wave": {
+        "targets": [
+            {
+                "expr": "Correlated Wave"
+            }
+        ]
+    },
+    "inverted_wave": {
+        "targets": [
+            {
+                "expr": "Inverted Wave"
+            }
+        ]
+    },
+    "users_online": {
+        "targets": [
+            {
+                "expr": "Users Online"
+            }
+        ]
+    },
+    "cpu_usage": {
+        "targets": [
+            {
+                "expr": "CPU Usage"
+            }
+        ]
+    },
+    "ram_usage": {
+        "targets": [
+            {
+                "expr": "RAM Usage"
+            }
+        ]
+    },
+    "db_connections": {
+        "targets": [
+            {
+                "expr": "DB Connections"
+            }
+        ]
+    },
+    "db_latency": {
+        "targets": [
+            {
+                "expr": "DB Latency"
+            }
+        ]
+    }
+}
