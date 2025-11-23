@@ -267,257 +267,6 @@
         }
     </script>
     <script type="text/babel">
-    function DTWVisualization({ series1, series2, dtwResult, loading }) {
-        const chartRef = React.useRef(null);
-        const chartInstance = React.useRef(null);
-
-        useEffect(() => {
-            if (!chartRef.current || loading || !series1 || !series2 || !dtwResult) return;
-
-            if (chartInstance.current) {
-                chartInstance.current.dispose();
-            }
-
-            const chart = echarts.init(chartRef.current);
-            chartInstance.current = chart;
-
-            const option = {
-                title: {
-                    text: `DTW Distance: ${dtwResult.distance.toFixed(4)}`,
-                    left: 'center',
-                },
-                tooltip: {
-                    trigger: 'axis',
-                    formatter: function (params) {
-                        let result = `Index: ${params[0].axisValueLabel}<br/>`;
-                        params.forEach(function (item) {
-                            result += `${item.marker}${item.seriesName}: ${item.value[1].toFixed(4)}<br/>`;
-                        });
-                        return result;
-                    }
-                },
-                legend: {
-                    data: [series1.name, series2.name, 'Warping Path'],
-                    bottom: 30,
-                },
-                grid: {
-                    left: '5%',
-                    right: '5%',
-                    bottom: '15%',
-                    containLabel: true,
-                },
-                xAxis: {
-                    type: 'value',
-                    name: 'Time (index)',
-                    boundaryGap: false,
-                },
-                yAxis: {
-                    type: 'value',
-                    name: 'Normalized Value',
-                },
-                series: [
-                    {
-                        name: series1.name,
-                        type: 'line',
-                        data: series1.data.map((d, i) => [i, d[1]]),
-                        showSymbol: false,
-                    },
-                    {
-                        name: series2.name,
-                        type: 'line',
-                        data: series2.data.map((d, i) => [i, d[1]]),
-                        showSymbol: false,
-                    },
-                    {
-                        name: 'Warping Path',
-                        type: 'lines',
-                        data: dtwResult.path.map(p => ({
-                            coords: [
-                                [p[0], series1.data[p[0]][1]],
-                                [p[1], series2.data[p[1]][1]]
-                            ]
-                        })),
-                        lineStyle: {
-                            color: 'rgba(0, 0, 0, 0.2)',
-                            width: 1,
-                        }
-                    }
-                ],
-                dataZoom: [
-                    {
-                        type: 'inside',
-                        start: 0,
-                        end: 100,
-                    },
-                    {
-                        type: 'slider',
-                        height: 20,
-                        bottom: 5,
-                    }
-                ]
-            };
-
-            chart.setOption(option);
-
-            const resizeObserver = new ResizeObserver(() => chart.resize());
-            resizeObserver.observe(chartRef.current);
-
-            return () => {
-                resizeObserver.disconnect();
-                if (chartInstance.current) {
-                    chartInstance.current.dispose();
-                    chartInstance.current = null;
-                }
-            };
-        }, [series1, series2, dtwResult, loading]);
-
-        if (loading) {
-            return (
-                <div style={{ padding: '20px', textAlign: 'center', marginTop: '20px', border: '1px solid #eee', height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <antd.Spin size="large" tip="Calculating DTW..." />
-                </div>
-            );
-        }
-        
-        if (!series1 || !series2) {
-             return (
-                <div style={{ padding: '20px', textAlign: 'center', color: '#888', marginTop: '20px' }}>
-                    Please select two series to compare.
-                </div>
-            );
-        }
-
-        if (!dtwResult) {
-            return (
-                <div style={{ padding: '20px', textAlign: 'center', color: '#888', marginTop: '20px' }}>
-                    Calculating DTW...
-                </div>
-            );
-        }
-
-        return (
-            <div
-                ref={chartRef}
-                style={{ width: '100%', height: '500px', border: '1px solid #eee', marginTop: '20px' }}
-            />
-        );
-    }
-
-    function DTWSimilarityTable({ series1, series2, dtwResult }) {
-        if (!series1 || !series2 || !dtwResult) {
-            return null;
-        }
-
-        const similarityScore = 1 / (1 + dtwResult.distance);
-
-        const columns = [
-            {
-                title: 'Metric',
-                dataIndex: 'metric',
-                key: 'metric',
-            },
-            {
-                title: 'Value',
-                dataIndex: 'value',
-                key: 'value',
-            },
-        ];
-
-        const data = [
-            {
-                key: '1',
-                metric: 'DTW Distance',
-                value: dtwResult.distance.toFixed(4),
-            },
-            {
-                key: '2',
-                metric: 'Similarity Score',
-                value: similarityScore.toFixed(4),
-            },
-        ];
-
-        return (
-            <div style={{ marginTop: '20px' }}>
-                <antd.Table
-                    dataSource={data}
-                    columns={columns}
-                    pagination={false}
-                    size="small"
-                />
-            </div>
-        );
-    }
-    
-    function DTW({ normalizedChartsData, loading }) {
-        const [series1, setSeries1] = useState(null);
-        const [series2, setSeries2] = useState(null);
-        const [dtwResult, setDtwResult] = useState(null);
-        
-        const handleSeries1Change = (value) => {
-            const selectedSeries = normalizedChartsData.find(s => s.name === value);
-            setSeries1(selectedSeries);
-        };
-
-        const handleSeries2Change = (value) => {
-            const selectedSeries = normalizedChartsData.find(s => s.name === value);
-            setSeries2(selectedSeries);
-        };
-        
-        useEffect(() => {
-            if (series1 && series2) {
-                const dtwResult = calculateDTW(series1.data.map(d => d[1]), series2.data.map(d => d[1]));
-                setDtwResult(dtwResult);
-            } else {
-                setDtwResult(null);
-            }
-        }, [series1, series2]);
-
-        return (
-            <div>
-                <Space>
-                    <antd.Select
-                        showSearch
-                        style={{ width: 300 }}
-                        placeholder="Select Series 1"
-                        onChange={handleSeries1Change}
-                        filterOption={(input, option) =>
-                            option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-                        }
-                    >
-                        {normalizedChartsData.map(series => (
-                            <antd.Select.Option key={series.name} value={series.name}>{series.name}</antd.Select.Option>
-                        ))}
-                    </antd.Select>
-                    <antd.Select
-                        showSearch
-                        style={{ width: 300 }}
-                        placeholder="Select Series 2"
-                        onChange={handleSeries2Change}
-                        filterOption={(input, option) =>
-                            option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-                        }
-                    >
-                        {normalizedChartsData.map(series => (
-                            <antd.Select.Option key={series.name} value={series.name}>{series.name}</antd.Select.Option>
-                        ))}
-                    </antd.Select>
-                </Space>
-                <DTWVisualization
-                    series1={series1}
-                    series2={series2}
-                    dtwResult={dtwResult}
-                    loading={loading}
-                />
-                <DTWSimilarityTable
-                    series1={series1}
-                    series2={series2}
-                    dtwResult={dtwResult}
-                />
-            </div>
-        );
-    }
-</script>
-    <script type="text/babel">
         function MainApp() {
             const API_URL = '/run-request';
 
@@ -543,7 +292,7 @@
                 const seriesA = appContext.rawChartsData.find(s => s.name === record.seriesA);
                 const seriesB = appContext.rawChartsData.find(s => s.name === record.seriesB);
                 setModalChartData([seriesA, seriesB]);
-                setModalTitle(`R-Value: ${record.rValue.toFixed(4)} | DTW: ${record.dtwDistance.toFixed(4)} | ${record.seriesA} vs ${record.seriesB}`);
+                setModalTitle(`R-Value: ${record.rValue.toFixed(4)} | ${record.seriesA} vs ${record.seriesB}`);
                 setModalVisible(true);
             };
 
@@ -678,29 +427,7 @@
             const tabsItems = [
                 {
                     key: '1',
-                    label: 'Raw Data',
-                    children: (
-                        <EChartsVisualization
-                            data={rawChartsData}
-                            yAxisName="Value"
-                            loading={loading}
-                        />
-                    ),
-                },
-                {
-                    key: '2',
-                    label: 'Normalized Data',
-                    children: (
-                        <EChartsVisualization
-                            data={normalizedChartsData}
-                            yAxisName="Normalized Value (0 to 1)"
-                            loading={loading}
-                        />
-                    ),
-                },
-                {
-                    key: '3',
-                    label: 'R-Values (Correlation)',
+                    label: 'Correlation Analysis',
                     children: (
                         <CorrelationTable
                             data={correlationData} // Pass the instantly filtered data
@@ -715,15 +442,27 @@
                     ),
                 },
                 {
-                    key: '4',
-                    label: 'Dynamic Time Warping',
+                    key: '2',
+                    label: 'Raw Data',
                     children: (
-                        <DTW
-                            normalizedChartsData={normalizedChartsData}
+                        <EChartsVisualization
+                            data={rawChartsData}
+                            yAxisName="Value"
                             loading={loading}
                         />
                     ),
-                }
+                },
+                {
+                    key: '3',
+                    label: 'Normalized Data',
+                    children: (
+                        <EChartsVisualization
+                            data={normalizedChartsData}
+                            yAxisName="Normalized Value (0 to 1)"
+                            loading={loading}
+                        />
+                    ),
+                },
             ];
 
             return (
