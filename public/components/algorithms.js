@@ -43,47 +43,12 @@ const normalizeData = (rawChartsData) => {
     return normalizedData;
 }
 
-const calculateRValue = (seriesA, seriesB) => {
-    if (seriesA.data.length !== seriesB.data.length || seriesA.data.length === 0) {
-        return 0;
-    }
-
-    const n = seriesA.data.length;
-    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
-
-    for (let i = 0; i < n; i++) {
-        const x = seriesA.data[i][1];
-        const y = seriesB.data[i][1];
-
-        if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-            return 0;
-        }
-
-        sumX += x;
-        sumY += y;
-        sumXY += x * y;
-        sumX2 += x * x;
-        sumY2 += y * y;
-    }
-
-    const numerator = (n * sumXY) - (sumX * sumY);
-    const denominator = Math.sqrt(((n * sumX2) - (sumX * sumX)) * ((n * sumY2) - (sumY * sumY)));
-
-    if (denominator === 0) {
-        return 0;
-    }
-
-    const rValue = numerator / denominator;
-    return isNaN(rValue) ? 0 : rValue;
-}
-
 const calculateAllCorrelations = (chartsData) => {
     const correlations = [];
     const n = chartsData.length;
 
     for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
-            const rValue = calculateRValue(chartsData[i], chartsData[j]);
             const dtwResult = calculateDTW(
                 chartsData[i].data.map(d => d[1]),
                 chartsData[j].data.map(d => d[1])
@@ -94,7 +59,6 @@ const calculateAllCorrelations = (chartsData) => {
                 seriesB: chartsData[j].name,
                 payloadKeyA: chartsData[i].payloadKey,
                 payloadKeyB: chartsData[j].payloadKey,
-                rValue: rValue,
                 dtwDistance: dtwResult.distance
             });
         }

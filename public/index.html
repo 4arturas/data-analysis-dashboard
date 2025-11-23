@@ -89,23 +89,6 @@
                     )
                 },
                 {
-                    title: 'R-Value',
-                    dataIndex: 'rValue',
-                    key: 'rValue',
-                    render: (text) => {
-                        const value = text;
-                        const formattedText = value.toFixed(4);
-                        let color = 'black';
-                        if (value > 0) {
-                            color = 'green';
-                        } else if (value < 0) {
-                            color = 'red';
-                        }
-                        return <Text strong style={{ color: color }}>{formattedText}</Text>;
-                    },
-                    sorter: (a, b) => a.rValue - b.rValue,
-                },
-                {
                     title: 'DTW Distance',
                     dataIndex: 'dtwDistance',
                     key: 'dtwDistance',
@@ -133,7 +116,7 @@
                         style={{ marginTop: '10px' }}
                         onChange={onTableChange}
                         locale={{
-                            emptyText: hasCorrelations
+                            emptyText: data.length > 0
                                 ? `No correlations found.`
                                 : 'Not enough data to calculate correlations (need at least two series).'
                         }}
@@ -270,7 +253,7 @@
             const [modalChartData, setModalChartData] = useState([]);
             const [modalTitle, setModalTitle] = useState('');
 
-            const [sortInfo, setSortInfo] = useState({ order: 'descend', columnKey: 'rValue' });
+            const [sortInfo, setSortInfo] = useState({ order: 'ascend', columnKey: 'dtwDistance' });
 
             const [activeCorrelationTabKey, setActiveCorrelationTabKey] = useState('normalized'); // 'normalized' or 'raw'
 
@@ -289,7 +272,7 @@
                 const seriesA = seriesSource.find(s => s.name === record.seriesA);
                 const seriesB = seriesSource.find(s => s.name === record.seriesB);
                 setModalChartData([seriesA, seriesB]);
-                setModalTitle(`R-Value: ${record.rValue.toFixed(4)} | ${record.seriesA} vs ${record.seriesB}`);
+                setModalTitle(`DTW: ${record.dtwDistance.toFixed(4)} | ${record.seriesA} vs ${record.seriesB}`);
                 setModalVisible(true);
             };
 
