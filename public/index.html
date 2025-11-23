@@ -54,7 +54,7 @@
         const { RangePicker } = DatePicker;
     </script>
     <script type="text/babel">
-        function CorrelationTable({ data, loading, allCorrelations, onShowChart, onTableChange, sortInfo }) {
+        function CorrelationTable({ data, loading, onShowChart, onTableChange, sortInfo, normalizationType }) {
             if (loading) {
                 return (
                     <div style={{ padding: '20px', textAlign: 'center', marginTop: '20px', border: '1px solid #eee', height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -65,7 +65,7 @@
 
             const columns = [
                 {
-                    title: 'Series A',
+                    title: `Series A (${normalizationType})`,
                     dataIndex: 'seriesA',
                     key: 'seriesA',
                     render: (text, record) => (
@@ -77,7 +77,7 @@
                     )
                 },
                 {
-                    title: 'Series B',
+                    title: `Series B (${normalizationType})`,
                     dataIndex: 'seriesB',
                     key: 'seriesB',
                     render: (text, record) => (
@@ -116,12 +116,12 @@
                     title: 'Chart',
                     key: 'chart',
                     render: (text, record) => (
-                        <a onClick={() => onShowChart(record)}>📈</a>
+                        <a onClick={() => onShowChart(record, normalizationType)}>📈</a>
                     ),
                 },
             ];
 
-            const hasCorrelations = allCorrelations.length > 0;
+            const hasCorrelations = data.length > 0;
 
             return (
                 <div style={{ marginTop: '20px' }}>
@@ -263,21 +263,31 @@
             const initialFrom = appContext.initialFrom;
             const initialTo = appContext.initialTo;
             const loading = appContext.loading;
-            const allCorrelations = appContext.allCorrelations;
-            
+            const allCorrelationsRaw = appContext.allCorrelationsRaw;
+            const allCorrelationsNormalized = appContext.allCorrelationsNormalized;
+
             const [modalVisible, setModalVisible] = useState(false);
             const [modalChartData, setModalChartData] = useState([]);
             const [modalTitle, setModalTitle] = useState('');
 
             const [sortInfo, setSortInfo] = useState({ order: 'descend', columnKey: 'rValue' });
 
+            const [activeCorrelationTabKey, setActiveCorrelationTabKey] = useState('normalized'); // 'normalized' or 'raw'
+
             const handleTableChange = (pagination, filters, sorter) => {
                 setSortInfo(sorter);
             };
 
-            const handleShowChart = (record) => {
-                const seriesA = appContext.rawChartsData.find(s => s.name === record.seriesA);
-                const seriesB = appContext.rawChartsData.find(s => s.name === record.seriesB);
+            const handleShowChart = (record, normalizationType) => {
+                let seriesSource;
+                if (normalizationType === "Normalized") {
+                    seriesSource = appContext.normalizedChartsData;
+                } else {
+                    seriesSource = appContext.rawChartsData;
+                }
+
+                const seriesA = seriesSource.find(s => s.name === record.seriesA);
+                const seriesB = seriesSource.find(s => s.name === record.seriesB);
                 setModalChartData([seriesA, seriesB]);
                 setModalTitle(`R-Value: ${record.rValue.toFixed(4)} | ${record.seriesA} vs ${record.seriesB}`);
                 setModalVisible(true);
@@ -287,13 +297,12 @@
                 setModalVisible(false);
             };
 
-            // Use useMemo for instant, correct filtering of the correlation data
             const correlationData = useMemo(() => {
-                if (!allCorrelations || allCorrelations.length === 0) {
-                    return [];
+                if (activeCorrelationTabKey === 'normalized') {
+                    return allCorrelationsNormalized || [];
                 }
-                return allCorrelations;
-            }, [allCorrelations]);
+                return allCorrelationsRaw || [];
+            }, [activeCorrelationTabKey, allCorrelationsRaw, allCorrelationsNormalized]);
 
 
             const [dateRange, setDateRange] = useState([
@@ -309,13 +318,6 @@
                 }
             };
 
-            const handleThresholdChange = (value) => {
-                setAppContext(prevContext => ({
-                    ...prevContext,
-                    correlationThreshold: value
-                }));
-            };
-
             const runRequests = useCallback(async (startDayjs, endDayjs) => {
                 if (!startDayjs || !endDayjs) return;
 
@@ -324,7 +326,8 @@
                     loading: true,
                     rawChartsData: [],
                     normalizedChartsData: [],
-                    allCorrelations: [],
+                    allCorrelationsRaw: [],
+                    allCorrelationsNormalized: [],
                 }));
 
                 const fromISO = startDayjs.toISOString();
@@ -376,14 +379,16 @@
                     }
 
                     const newNormalizedChartsData = normalizeData(newRawChartsData);
-                    const allCorrelationData = calculateAllCorrelations(newRawChartsData);
+                    const allCorrelationDataRaw = calculateAllCorrelations(newRawChartsData);
+                    const allCorrelationDataNormalized = calculateAllCorrelations(newNormalizedChartsData);
 
-                    // Set all results to context. Filtered results are calculated by useMemo immediately after.
+
                     setAppContext(prevContext => ({
                         ...prevContext,
                         rawChartsData: newRawChartsData,
                         normalizedChartsData: newNormalizedChartsData,
-                        allCorrelations: allCorrelationData,
+                        allCorrelationsRaw: allCorrelationDataRaw,
+                        allCorrelationsNormalized: allCorrelationDataNormalized,
                     }));
 
                 } catch (err) {
@@ -411,20 +416,34 @@
             const tabsItems = [
                 {
                     key: '1',
-                    label: 'Correlation Analysis',
+                    label: 'Normalized Correlation Analysis',
                     children: (
                         <CorrelationTable
-                            data={correlationData} // Pass the instantly filtered data
+                            data={correlationData}
                             loading={loading}
-                            allCorrelations={allCorrelations}
                             onShowChart={handleShowChart}
                             onTableChange={handleTableChange}
                             sortInfo={sortInfo}
+                            normalizationType="Normalized"
                         />
                     ),
                 },
                 {
                     key: '2',
+                    label: 'Raw Correlation Analysis',
+                    children: (
+                        <CorrelationTable
+                            data={correlationData}
+                            loading={loading}
+                            onShowChart={handleShowChart}
+                            onTableChange={handleTableChange}
+                            sortInfo={sortInfo}
+                            normalizationType="Raw"
+                        />
+                    ),
+                },
+                {
+                    key: '3',
                     label: 'Raw Data',
                     children: (
                         <EChartsVisualization
@@ -435,7 +454,7 @@
                     ),
                 },
                 {
-                    key: '3',
+                    key: '4',
                     label: 'Normalized Data',
                     children: (
                         <EChartsVisualization
@@ -475,6 +494,10 @@
                     <Tabs
                         defaultActiveKey="1"
                         items={tabsItems}
+                        onChange={(key) => {
+                            if (key === '1') setActiveCorrelationTabKey('normalized');
+                            if (key === '2') setActiveCorrelationTabKey('raw');
+                        }}
                     />
                     
                     <antd.Modal

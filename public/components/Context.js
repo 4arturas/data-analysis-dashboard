@@ -9,6 +9,7 @@ const AppProvider = ({ children }) => {
         rawChartsData: [],
         normalizedChartsData: [], // Added for correlation analysis
         allCorrelations: [], // Added for correlation analysis (unfiltered source)
+        normalizeDataForCorrelation: true,
 
 
         initialFrom: '2025-11-10T10:40:00.000Z',
