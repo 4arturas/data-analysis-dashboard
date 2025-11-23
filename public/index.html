@@ -524,6 +524,7 @@
             
             const [modalVisible, setModalVisible] = useState(false);
             const [modalChartData, setModalChartData] = useState([]);
+            const [modalTitle, setModalTitle] = useState('');
 
             const [sortInfo, setSortInfo] = useState({ order: 'descend', columnKey: 'rValue' });
 
@@ -535,6 +536,7 @@
                 const seriesA = appContext.rawChartsData.find(s => s.name === record.seriesA);
                 const seriesB = appContext.rawChartsData.find(s => s.name === record.seriesB);
                 setModalChartData([seriesA, seriesB]);
+                setModalTitle(`R-Value: ${record.rValue.toFixed(4)} | ${record.seriesA} vs ${record.seriesB}`);
                 setModalVisible(true);
             };
 
@@ -748,7 +750,7 @@
                     />
                     
                     <antd.Modal
-                        title="Correlated Series Chart"
+                        title={modalTitle}
                         open={modalVisible}
                         onCancel={handleCancelModal}
                         footer={null}
