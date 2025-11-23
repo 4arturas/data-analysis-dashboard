@@ -84,13 +84,18 @@ const calculateAllCorrelations = (chartsData) => {
     for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
             const rValue = calculateRValue(chartsData[i], chartsData[j]);
+            const dtwResult = calculateDTW(
+                chartsData[i].data.map(d => d[1]),
+                chartsData[j].data.map(d => d[1])
+            );
             correlations.push({
                 key: `${chartsData[i].name}-${chartsData[j].name}`,
                 seriesA: chartsData[i].name,
                 seriesB: chartsData[j].name,
                 payloadKeyA: chartsData[i].payloadKey,
                 payloadKeyB: chartsData[j].payloadKey,
-                rValue: rValue
+                rValue: rValue,
+                dtwDistance: dtwResult.distance
             });
         }
     }

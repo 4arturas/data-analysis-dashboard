@@ -106,6 +106,13 @@
                     sorter: (a, b) => a.rValue - b.rValue,
                 },
                 {
+                    title: 'DTW Distance',
+                    dataIndex: 'dtwDistance',
+                    key: 'dtwDistance',
+                    render: (text) => text.toFixed(4),
+                    sorter: (a, b) => a.dtwDistance - b.dtwDistance,
+                },
+                {
                     title: 'Chart',
                     key: 'chart',
                     render: (text, record) => (
@@ -536,7 +543,7 @@
                 const seriesA = appContext.rawChartsData.find(s => s.name === record.seriesA);
                 const seriesB = appContext.rawChartsData.find(s => s.name === record.seriesB);
                 setModalChartData([seriesA, seriesB]);
-                setModalTitle(`R-Value: ${record.rValue.toFixed(4)} | ${record.seriesA} vs ${record.seriesB}`);
+                setModalTitle(`R-Value: ${record.rValue.toFixed(4)} | DTW: ${record.dtwDistance.toFixed(4)} | ${record.seriesA} vs ${record.seriesB}`);
                 setModalVisible(true);
             };
 
