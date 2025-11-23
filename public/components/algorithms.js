@@ -69,6 +69,14 @@ const calculateAllCorrelations = (chartsData) => {
 const calculateDTW = (ts1, ts2, distanceFunction = (a, b) => Math.abs(a - b)) => {
     const n = ts1.length;
     const m = ts2.length;
+
+    if (n === 0 && m === 0) {
+        return { distance: 0, path: [] };
+    }
+    if (n === 0 || m === 0) {
+        return { distance: Infinity, path: [] };
+    }
+
     const dtw = Array(n).fill(null).map(() => Array(m).fill(Infinity));
     dtw[0][0] = distanceFunction(ts1[0], ts2[0]);
 
