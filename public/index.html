@@ -54,7 +54,7 @@
         const { RangePicker } = DatePicker;
     </script>
     <script type="text/babel">
-        function CorrelationTable({ data, loading, correlationThreshold, onThresholdChange, allCorrelations, onShowChart, onTableChange, sortInfo }) {
+        function CorrelationTable({ data, loading, allCorrelations, onShowChart, onTableChange, sortInfo }) {
             if (loading) {
                 return (
                     <div style={{ padding: '20px', textAlign: 'center', marginTop: '20px', border: '1px solid #eee', height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -125,18 +125,6 @@
 
             return (
                 <div style={{ marginTop: '20px' }}>
-                    <div style={{ minWidth: 250, marginBottom: '10px' }}>
-                        <Text strong>Correlation Threshold (|R| &le; {correlationThreshold.toFixed(2)}):</Text>
-                        <antd.Slider
-                            min={0.05}
-                            max={1.0}
-                            step={0.01}
-                            value={correlationThreshold}
-                            onChange={onThresholdChange}
-                            tooltip={{ formatter: (value) => `|R| \u2264 ${value.toFixed(2)}` }}
-                            disabled={!hasCorrelations}
-                        />
-                    </div>
                     <antd.Table
                         dataSource={data}
                         columns={columns}
@@ -146,7 +134,7 @@
                         onChange={onTableChange}
                         locale={{
                             emptyText: hasCorrelations
-                                ? `No correlations found with |R| \u2264 ${correlationThreshold.toFixed(2)}`
+                                ? `No correlations found.`
                                 : 'Not enough data to calculate correlations (need at least two series).'
                         }}
                     />
@@ -275,7 +263,6 @@
             const initialFrom = appContext.initialFrom;
             const initialTo = appContext.initialTo;
             const loading = appContext.loading;
-            const correlationThreshold = appContext.correlationThreshold;
             const allCorrelations = appContext.allCorrelations;
             
             const [modalVisible, setModalVisible] = useState(false);
@@ -305,11 +292,8 @@
                 if (!allCorrelations || allCorrelations.length === 0) {
                     return [];
                 }
-                // THIS IS THE CORRECT FILTERING LOGIC: |R| >= Threshold
-                return allCorrelations.filter(item =>
-                    Math.abs(item.rValue) >= correlationThreshold
-                );
-            }, [allCorrelations, correlationThreshold]);
+                return allCorrelations;
+            }, [allCorrelations]);
 
 
             const [dateRange, setDateRange] = useState([
@@ -432,8 +416,6 @@
                         <CorrelationTable
                             data={correlationData} // Pass the instantly filtered data
                             loading={loading}
-                            correlationThreshold={correlationThreshold}
-                            onThresholdChange={handleThresholdChange}
                             allCorrelations={allCorrelations}
                             onShowChart={handleShowChart}
                             onTableChange={handleTableChange}

@@ -9,7 +9,7 @@ const AppProvider = ({ children }) => {
         rawChartsData: [],
         normalizedChartsData: [], // Added for correlation analysis
         allCorrelations: [], // Added for correlation analysis (unfiltered source)
-        correlationThreshold: 0.5, // Added for correlation analysis
+
 
         initialFrom: '2025-11-10T10:40:00.000Z',
         initialTo: '2025-11-10T11:10:00.000Z',
