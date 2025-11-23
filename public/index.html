@@ -30,6 +30,7 @@
     <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js"></script>
 
     <script type="text/babel" src="components/Context.js"></script>
+    <script type="text/babel" src="components/algorithms.js"></script>
 </head>
 
 <body>
@@ -45,116 +46,15 @@
             Tabs,
             Spin,
             Table,
-            Slider
+            Slider,
+            Select,
+            Modal
         } = antd;
         const { Text } = Typography;
         const { RangePicker } = DatePicker;
     </script>
     <script type="text/babel">
-        // --- UTILITY FUNCTIONS FOR CORRELATION ANALYSIS ---
-
-        function normalizeData(rawChartsData) {
-            if (!rawChartsData || rawChartsData.length === 0) {
-                return [];
-            }
-
-            const normalizedData = [];
-
-            rawChartsData.forEach(series => {
-                let min = Infinity;
-                let max = -Infinity;
-
-                series.data.forEach(point => {
-                    const value = point[1];
-                    if (typeof value === 'number' && !isNaN(value)) {
-                        if (value < min) min = value;
-                        if (value > max) max = value;
-                    }
-                });
-
-                const range = max - min;
-                const normalizedSeriesData = series.data.map(point => {
-                    const timestamp = point[0];
-                    const value = point[1];
-                    let normalizedValue = value;
-
-                    if (typeof value === 'number' && !isNaN(value)) {
-                        if (range === 0) {
-                            normalizedValue = 0;
-                        } else {
-                            normalizedValue = (value - min) / range;
-                        }
-                    }
-                    return [timestamp, normalizedValue];
-                });
-
-                normalizedData.push({
-                    name: series.name,
-                    payloadKey: series.payloadKey,
-                    data: normalizedSeriesData
-                });
-            });
-
-            return normalizedData;
-        }
-
-        function calculateRValue(seriesA, seriesB) {
-            if (seriesA.data.length !== seriesB.data.length || seriesA.data.length === 0) {
-                return 0;
-            }
-
-            const n = seriesA.data.length;
-            let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
-
-            for (let i = 0; i < n; i++) {
-                const x = seriesA.data[i][1];
-                const y = seriesB.data[i][1];
-
-                if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-                    return 0;
-                }
-
-                sumX += x;
-                sumY += y;
-                sumXY += x * y;
-                sumX2 += x * x;
-                sumY2 += y * y;
-            }
-
-            const numerator = (n * sumXY) - (sumX * sumY);
-            const denominator = Math.sqrt(((n * sumX2) - (sumX * sumX)) * ((n * sumY2) - (sumY * sumY)));
-
-            if (denominator === 0) {
-                return 0;
-            }
-
-            return numerator / denominator;
-        }
-
-        function calculateAllCorrelations(chartsData) {
-            const correlations = [];
-            const n = chartsData.length;
-
-            for (let i = 0; i < n; i++) {
-                for (let j = i + 1; j < n; j++) {
-                    const rValue = calculateRValue(chartsData[i], chartsData[j]);
-                    correlations.push({
-                        key: `${chartsData[i].name}-${chartsData[j].name}`,
-                        seriesA: chartsData[i].name,
-                        seriesB: chartsData[j].name,
-                        payloadKeyA: chartsData[i].payloadKey,
-                        payloadKeyB: chartsData[j].payloadKey,
-                        rValue: rValue
-                    });
-                }
-            }
-            return correlations;
-        }
-    </script>
-    <script type="text/babel">
-        // --- CORRELATION TABLE COMPONENT ---
-
-        function CorrelationTable({ data, loading, correlationThreshold, onThresholdChange, allCorrelations }) {
+        function CorrelationTable({ data, loading, correlationThreshold, onThresholdChange, allCorrelations, onShowChart }) {
             if (loading) {
                 return (
                     <div style={{ padding: '20px', textAlign: 'center', marginTop: '20px', border: '1px solid #eee', height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -205,6 +105,13 @@
                     },
                     sorter: (a, b) => a.rValue - b.rValue,
                 },
+                {
+                    title: 'Chart',
+                    key: 'chart',
+                    render: (text, record) => (
+                        <a onClick={() => onShowChart(record)}>📈</a>
+                    ),
+                },
             ];
 
             const hasCorrelations = allCorrelations.length > 0;
@@ -241,8 +148,6 @@
         }
     </script>
     <script type="text/babel">
-        // --- ECHARTS VISUALIZATION COMPONENT ---
-
         function EChartsVisualization({ data, yAxisName = 'Value', loading = false }) {
             const chartRef = React.useRef(null);
             const chartInstance = React.useRef(null);
@@ -355,8 +260,257 @@
         }
     </script>
     <script type="text/babel">
-        // --- MAIN APP COMPONENT ---
+    function DTWVisualization({ series1, series2, dtwResult, loading }) {
+        const chartRef = React.useRef(null);
+        const chartInstance = React.useRef(null);
 
+        useEffect(() => {
+            if (!chartRef.current || loading || !series1 || !series2 || !dtwResult) return;
+
+            if (chartInstance.current) {
+                chartInstance.current.dispose();
+            }
+
+            const chart = echarts.init(chartRef.current);
+            chartInstance.current = chart;
+
+            const option = {
+                title: {
+                    text: `DTW Distance: ${dtwResult.distance.toFixed(4)}`,
+                    left: 'center',
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function (params) {
+                        let result = `Index: ${params[0].axisValueLabel}<br/>`;
+                        params.forEach(function (item) {
+                            result += `${item.marker}${item.seriesName}: ${item.value[1].toFixed(4)}<br/>`;
+                        });
+                        return result;
+                    }
+                },
+                legend: {
+                    data: [series1.name, series2.name, 'Warping Path'],
+                    bottom: 30,
+                },
+                grid: {
+                    left: '5%',
+                    right: '5%',
+                    bottom: '15%',
+                    containLabel: true,
+                },
+                xAxis: {
+                    type: 'value',
+                    name: 'Time (index)',
+                    boundaryGap: false,
+                },
+                yAxis: {
+                    type: 'value',
+                    name: 'Normalized Value',
+                },
+                series: [
+                    {
+                        name: series1.name,
+                        type: 'line',
+                        data: series1.data.map((d, i) => [i, d[1]]),
+                        showSymbol: false,
+                    },
+                    {
+                        name: series2.name,
+                        type: 'line',
+                        data: series2.data.map((d, i) => [i, d[1]]),
+                        showSymbol: false,
+                    },
+                    {
+                        name: 'Warping Path',
+                        type: 'lines',
+                        data: dtwResult.path.map(p => ({
+                            coords: [
+                                [p[0], series1.data[p[0]][1]],
+                                [p[1], series2.data[p[1]][1]]
+                            ]
+                        })),
+                        lineStyle: {
+                            color: 'rgba(0, 0, 0, 0.2)',
+                            width: 1,
+                        }
+                    }
+                ],
+                dataZoom: [
+                    {
+                        type: 'inside',
+                        start: 0,
+                        end: 100,
+                    },
+                    {
+                        type: 'slider',
+                        height: 20,
+                        bottom: 5,
+                    }
+                ]
+            };
+
+            chart.setOption(option);
+
+            const resizeObserver = new ResizeObserver(() => chart.resize());
+            resizeObserver.observe(chartRef.current);
+
+            return () => {
+                resizeObserver.disconnect();
+                if (chartInstance.current) {
+                    chartInstance.current.dispose();
+                    chartInstance.current = null;
+                }
+            };
+        }, [series1, series2, dtwResult, loading]);
+
+        if (loading) {
+            return (
+                <div style={{ padding: '20px', textAlign: 'center', marginTop: '20px', border: '1px solid #eee', height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <antd.Spin size="large" tip="Calculating DTW..." />
+                </div>
+            );
+        }
+        
+        if (!series1 || !series2) {
+             return (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#888', marginTop: '20px' }}>
+                    Please select two series to compare.
+                </div>
+            );
+        }
+
+        if (!dtwResult) {
+            return (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#888', marginTop: '20px' }}>
+                    Calculating DTW...
+                </div>
+            );
+        }
+
+        return (
+            <div
+                ref={chartRef}
+                style={{ width: '100%', height: '500px', border: '1px solid #eee', marginTop: '20px' }}
+            />
+        );
+    }
+
+    function DTWSimilarityTable({ series1, series2, dtwResult }) {
+        if (!series1 || !series2 || !dtwResult) {
+            return null;
+        }
+
+        const similarityScore = 1 / (1 + dtwResult.distance);
+
+        const columns = [
+            {
+                title: 'Metric',
+                dataIndex: 'metric',
+                key: 'metric',
+            },
+            {
+                title: 'Value',
+                dataIndex: 'value',
+                key: 'value',
+            },
+        ];
+
+        const data = [
+            {
+                key: '1',
+                metric: 'DTW Distance',
+                value: dtwResult.distance.toFixed(4),
+            },
+            {
+                key: '2',
+                metric: 'Similarity Score',
+                value: similarityScore.toFixed(4),
+            },
+        ];
+
+        return (
+            <div style={{ marginTop: '20px' }}>
+                <antd.Table
+                    dataSource={data}
+                    columns={columns}
+                    pagination={false}
+                    size="small"
+                />
+            </div>
+        );
+    }
+    
+    function DTW({ normalizedChartsData, loading }) {
+        const [series1, setSeries1] = useState(null);
+        const [series2, setSeries2] = useState(null);
+        const [dtwResult, setDtwResult] = useState(null);
+        
+        const handleSeries1Change = (value) => {
+            const selectedSeries = normalizedChartsData.find(s => s.name === value);
+            setSeries1(selectedSeries);
+        };
+
+        const handleSeries2Change = (value) => {
+            const selectedSeries = normalizedChartsData.find(s => s.name === value);
+            setSeries2(selectedSeries);
+        };
+        
+        useEffect(() => {
+            if (series1 && series2) {
+                const dtwResult = calculateDTW(series1.data.map(d => d[1]), series2.data.map(d => d[1]));
+                setDtwResult(dtwResult);
+            } else {
+                setDtwResult(null);
+            }
+        }, [series1, series2]);
+
+        return (
+            <div>
+                <Space>
+                    <antd.Select
+                        showSearch
+                        style={{ width: 300 }}
+                        placeholder="Select Series 1"
+                        onChange={handleSeries1Change}
+                        filterOption={(input, option) =>
+                            option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                        }
+                    >
+                        {normalizedChartsData.map(series => (
+                            <antd.Select.Option key={series.name} value={series.name}>{series.name}</antd.Select.Option>
+                        ))}
+                    </antd.Select>
+                    <antd.Select
+                        showSearch
+                        style={{ width: 300 }}
+                        placeholder="Select Series 2"
+                        onChange={handleSeries2Change}
+                        filterOption={(input, option) =>
+                            option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                        }
+                    >
+                        {normalizedChartsData.map(series => (
+                            <antd.Select.Option key={series.name} value={series.name}>{series.name}</antd.Select.Option>
+                        ))}
+                    </antd.Select>
+                </Space>
+                <DTWVisualization
+                    series1={series1}
+                    series2={series2}
+                    dtwResult={dtwResult}
+                    loading={loading}
+                />
+                <DTWSimilarityTable
+                    series1={series1}
+                    series2={series2}
+                    dtwResult={dtwResult}
+                />
+            </div>
+        );
+    }
+</script>
+    <script type="text/babel">
         function MainApp() {
             const API_URL = '/run-request';
 
@@ -367,6 +521,20 @@
             const loading = appContext.loading;
             const correlationThreshold = appContext.correlationThreshold;
             const allCorrelations = appContext.allCorrelations;
+            
+            const [modalVisible, setModalVisible] = useState(false);
+            const [modalChartData, setModalChartData] = useState([]);
+
+            const handleShowChart = (record) => {
+                const seriesA = appContext.rawChartsData.find(s => s.name === record.seriesA);
+                const seriesB = appContext.rawChartsData.find(s => s.name === record.seriesB);
+                setModalChartData([seriesA, seriesB]);
+                setModalVisible(true);
+            };
+
+            const handleCancelModal = () => {
+                setModalVisible(false);
+            };
 
 
             // Use useMemo for instant, correct filtering of the correlation data
@@ -526,6 +694,17 @@
                             correlationThreshold={correlationThreshold}
                             onThresholdChange={handleThresholdChange}
                             allCorrelations={allCorrelations}
+                            onShowChart={handleShowChart}
+                        />
+                    ),
+                },
+                {
+                    key: '4',
+                    label: 'Dynamic Time Warping',
+                    children: (
+                        <DTW
+                            normalizedChartsData={normalizedChartsData}
+                            loading={loading}
                         />
                     ),
                 }
@@ -560,6 +739,20 @@
                         defaultActiveKey="1"
                         items={tabsItems}
                     />
+                    
+                    <antd.Modal
+                        title="Correlated Series Chart"
+                        open={modalVisible}
+                        onCancel={handleCancelModal}
+                        footer={null}
+                        width="80%"
+                    >
+                        <EChartsVisualization
+                            data={modalChartData}
+                            yAxisName="Value"
+                            loading={false}
+                        />
+                    </antd.Modal>
                 </div>
             );
         }
