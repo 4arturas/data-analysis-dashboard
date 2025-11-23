@@ -73,7 +73,8 @@ const calculateRValue = (seriesA, seriesB) => {
         return 0;
     }
 
-    return numerator / denominator;
+    const rValue = numerator / denominator;
+    return isNaN(rValue) ? 0 : rValue;
 }
 
 const calculateAllCorrelations = (chartsData) => {

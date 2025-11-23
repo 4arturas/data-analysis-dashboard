@@ -54,7 +54,7 @@
         const { RangePicker } = DatePicker;
     </script>
     <script type="text/babel">
-        function CorrelationTable({ data, loading, correlationThreshold, onThresholdChange, allCorrelations, onShowChart }) {
+        function CorrelationTable({ data, loading, correlationThreshold, onThresholdChange, allCorrelations, onShowChart, onTableChange, sortInfo }) {
             if (loading) {
                 return (
                     <div style={{ padding: '20px', textAlign: 'center', marginTop: '20px', border: '1px solid #eee', height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -119,27 +119,27 @@
             return (
                 <div style={{ marginTop: '20px' }}>
                     <div style={{ minWidth: 250, marginBottom: '10px' }}>
-                        <Text strong>Correlation Threshold (|R| &ge; {correlationThreshold.toFixed(2)}):</Text>
+                        <Text strong>Correlation Threshold (|R| &le; {correlationThreshold.toFixed(2)}):</Text>
                         <antd.Slider
                             min={0.05}
                             max={1.0}
                             step={0.01}
                             value={correlationThreshold}
                             onChange={onThresholdChange}
-                            tooltip={{ formatter: (value) => `|R| \u2265 ${value.toFixed(2)}` }}
+                            tooltip={{ formatter: (value) => `|R| \u2264 ${value.toFixed(2)}` }}
                             disabled={!hasCorrelations}
                         />
                     </div>
-                    <Text type="secondary">Filtered (|R| &ge; {correlationThreshold.toFixed(2)}): Pearson correlation coefficients (R) between pairs of raw time series data.</Text>
                     <antd.Table
                         dataSource={data}
                         columns={columns}
                         pagination={false}
                         size="small"
                         style={{ marginTop: '10px' }}
+                        onChange={onTableChange}
                         locale={{
                             emptyText: hasCorrelations
-                                ? `No correlations found with |R| >= ${correlationThreshold.toFixed(2)}`
+                                ? `No correlations found with |R| \u2264 ${correlationThreshold.toFixed(2)}`
                                 : 'Not enough data to calculate correlations (need at least two series).'
                         }}
                     />
@@ -525,6 +525,12 @@
             const [modalVisible, setModalVisible] = useState(false);
             const [modalChartData, setModalChartData] = useState([]);
 
+            const [sortInfo, setSortInfo] = useState({ order: 'descend', columnKey: 'rValue' });
+
+            const handleTableChange = (pagination, filters, sorter) => {
+                setSortInfo(sorter);
+            };
+
             const handleShowChart = (record) => {
                 const seriesA = appContext.rawChartsData.find(s => s.name === record.seriesA);
                 const seriesB = appContext.rawChartsData.find(s => s.name === record.seriesB);
@@ -535,7 +541,6 @@
             const handleCancelModal = () => {
                 setModalVisible(false);
             };
-
 
             // Use useMemo for instant, correct filtering of the correlation data
             const correlationData = useMemo(() => {
@@ -695,6 +700,8 @@
                             onThresholdChange={handleThresholdChange}
                             allCorrelations={allCorrelations}
                             onShowChart={handleShowChart}
+                            onTableChange={handleTableChange}
+                            sortInfo={sortInfo}
                         />
                     ),
                 },
